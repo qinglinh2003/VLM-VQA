@@ -22,14 +22,18 @@ def main():
     ap.add_argument("--max_new_tokens", type=int, default=6)
     ap.add_argument("--temperature", type=float, default=0.0)
     ap.add_argument("--top_p", type=float, default=1.0)
+    ap.add_argument("--run_name", default=None, help="Version tag for outputs (e.g., baseline, rag_top3, vcd_v1)")
     args = ap.parse_args()
 
     cfg = load_cfg(args.config)
     mcfg, dcfg, lcfg = cfg["model"], cfg["data"], cfg["logging"]
     data_json = args.data_json or dcfg["vqa_eval_json"]
     images_dir = args.images_dir or dcfg["images_dir"]
-    out_dir = Path(args.out_dir or lcfg["out_dir"]) / "vqa"
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_root = Path(args.out_dir or lcfg["out_dir"])
+    run_name = args.run_name or lcfg.get("run_name", "baseline")
+    task_dir = out_root / "vqa" / run_name
+    task_dir.mkdir(parents=True, exist_ok=True)
+
 
     # Load plugins
     plugin_specs = []
@@ -98,8 +102,11 @@ def main():
     for p in plugins:
         metrics.update(p.finalize_metrics())
 
-    (out_dir / "metrics.json").write_text(json.dumps(metrics, indent=2))
-    (out_dir / "preds.json").write_text(json.dumps(logs, ensure_ascii=False, indent=2))
+    (task_dir / "metrics.json").write_text(json.dumps(metrics, indent=2))
+    (task_dir / "preds.json").write_text(json.dumps(logs, ensure_ascii=False, indent=2))
+    (task_dir / "run_meta.json").write_text(json.dumps({
+    "config": cfg, "cli": vars(args)
+    }, indent=2, default=str))
     print(json.dumps(metrics, indent=2))
 
 if __name__ == "__main__":

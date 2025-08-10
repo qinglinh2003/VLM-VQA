@@ -19,3 +19,4 @@ infer:
 
 logging:
   out_dir: "report"
+  run_name: "baseline"  
