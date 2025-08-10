@@ -1,0 +1,7 @@
+weights/
+scripts/
+data/
+report/
+__pycache__/
+*.pyc
+.venv/

@@ -1,0 +1,21 @@
+project:
+  seed: 42
+  device: "cuda"
+
+model:
+  name: "llava-1.6-7b"
+  path: "llava-hf/llava-v1.6-mistral-7b-hf"  
+  dtype: "bfloat16"
+
+data:
+  vqa_eval_json: "data/vqa_mini/vqa_mini.json"  
+  images_dir: "data/raw/coco"
+  pope_subset_json: "data/pope_subset/pope_100.json"
+
+infer:
+  max_new_tokens: 64
+  temperature: 0.2
+  top_p: 0.95
+
+logging:
+  out_dir: "report"
