@@ -8,9 +8,9 @@ model:
   dtype: "bfloat16"
 
 data:
-  vqa_eval_json: "data/vqa_mini/vqa_mini.json"  
+  vqa_eval_json: "data/processed/vqa_subset.json"  
   images_dir: "data/raw/coco"
-  pope_subset_json: "data/pope_subset/pope_100.json"
+  pope_subset_json: "data/processed/pope_subset.json"
 
 infer:
   max_new_tokens: 64
