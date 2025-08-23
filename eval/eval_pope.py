@@ -34,13 +34,17 @@ def main():
     task_dir = out_root / "pope" / run_name
     task_dir.mkdir(parents=True, exist_ok=True)
 
-
-    plugin_specs = []
     if args.plugins:
         plugin_specs = yaml.safe_load(Path(args.plugins).read_text())
+    else:
+        plugin_specs = cfg.get("plugins", [])
     plugins = load_plugins(plugin_specs)
 
-    runner = LlavaRunner(mcfg["path"], dtype=mcfg.get("dtype","bfloat16"), device=cfg["project"]["device"])
+    runner = LlavaRunner(
+        mcfg["path"],
+        dtype=mcfg.get("dtype", "bfloat16"),
+        device=cfg["project"]["device"]
+    )
 
     total, yes_cnt, acc_cnt, neg_total, hallu_cnt, unknown = 0, 0, 0, 0, 0, 0
     logs = []
@@ -51,10 +55,15 @@ def main():
 
     for it in tqdm(items, total=len(items)):
         ctx = {}
-        # Unified schema adaptation
-        label = it.get("label", None)  # 0/1 preferred; else use 'forbidden' legacy
-        sample = {"image": it["image"], "image_path": str(Path(images_dir) / it["image"]),
-                  "question": it["question"], "label": label, "forbidden": it.get("forbidden")}
+
+        label = it.get("label", None)  
+        sample = {
+            "image": it["image"],
+            "image_path": str(Path(images_dir) / it["image"]),
+            "question": it["question"],
+            "label": label,
+            "forbidden": it.get("forbidden")
+        }
         for p in plugins:
             sample = p.before_build_prompt(sample, ctx)
 
@@ -63,9 +72,34 @@ def main():
         for p in plugins:
             prompt, img = p.before_encode(prompt, img, ctx)
 
-        out = runner.answer(img, prompt, max_new_tokens=args.max_new_tokens,
-                            temperature=args.temperature, top_p=args.top_p)
+        out = runner.answer(
+            img, prompt,
+            max_new_tokens=args.max_new_tokens,
+            temperature=args.temperature,
+            top_p=args.top_p
+        )
         raw, pred = out["text"], out["normalized"]
+
+        ctx["pos"] = {"raw": raw, "pred": pred}
+
+        needs_contrast, contrast_maker = False, None
+        for p in plugins:
+            if hasattr(p, "wants_contrast") and p.wants_contrast(ctx):
+                needs_contrast, contrast_maker = True, p
+                break  
+
+        if needs_contrast and contrast_maker is not None:
+            neg_img = contrast_maker.make_contrast_view(img, ctx)
+            out_neg = runner.answer(
+                neg_img, prompt,
+                max_new_tokens=args.max_new_tokens,
+                temperature=args.temperature,
+                top_p=args.top_p
+            )
+            ctx["contrast"] = {
+                "raw": out_neg["text"],
+                "pred": out_neg["normalized"]
+            }
 
         for p in plugins:
             raw, pred = p.after_generate(raw, pred, ctx)
@@ -86,18 +120,24 @@ def main():
             hallu_cnt += int(pred == "yes")
 
         record = {
-            "image": it["image"], "question": it["question"], "label": label,
-            "raw": raw, "pred": pred, "ctx": ctx
+            "image": it["image"],
+            "question": it["question"],
+            "label": label,
+            "raw": raw,
+            "pred": pred,
+            "ctx": ctx
         }
         logs.append(record)
-        for p in plugins: p.update_metrics(record)
+        for p in plugins:
+            p.update_metrics(record)
 
     metrics = {
         "accuracy": (acc_cnt / total) if any("label" in it for it in items) else None,
         "yes_ratio": yes_cnt / max(total, 1),
         "hallu_rate_neg": hallu_cnt / max(neg_total, 1),
         "unknown_rate": unknown / max(total, 1),
-        "n_total": total, "n_neg": neg_total,
+        "n_total": total,
+        "n_neg": neg_total,
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
     for p in plugins:

@@ -35,16 +35,15 @@ def main():
     task_dir.mkdir(parents=True, exist_ok=True)
 
 
-    # Load plugins
     plugin_specs = []
     if args.plugins:
         plugin_specs = yaml.safe_load(Path(args.plugins).read_text())
+    else:
+        plugin_specs = cfg.get("plugins", [])
     plugins = load_plugins(plugin_specs)
 
-    # Init model
     runner = LlavaRunner(mcfg["path"], dtype=mcfg.get("dtype","bfloat16"), device=cfg["project"]["device"])
 
-    # Metrics
     total, correct, unknown = 0, 0, 0
     logs = []
     for p in plugins:
@@ -54,26 +53,21 @@ def main():
 
     for it in tqdm(items, total=len(items)):
         ctx = {}
-        # 1) pre-build
         sample = {"image": it["image"], "image_path": str(Path(images_dir) / it["image"]), 
                   "question": it["question"], "answer": it["answer"]}
         for p in plugins:
             sample = p.before_build_prompt(sample, ctx)
 
-        # 2) load image
         img = Image.open(sample["image_path"]).convert("RGB")
 
-        # 3) allow plugins to modify prompt/image (lightweight here)
         prompt = sample["question"]
         for p in plugins:
             prompt, img = p.before_encode(prompt, img, ctx)
 
-        # 4) run model (plugins can adjust gen kwargs in a more advanced version)
         out = runner.answer(img, prompt, max_new_tokens=args.max_new_tokens,
                             temperature=args.temperature, top_p=args.top_p)
         raw, pred = out["text"], out["normalized"]
 
-        # 5) allow plugins to post-process
         for p in plugins:
             raw, pred = p.after_generate(raw, pred, ctx)
 
@@ -92,7 +86,6 @@ def main():
         unknown += int(is_unknown)
         correct += int(is_correct)
 
-    # finalize
     metrics = {
         "accuracy": correct / max(total,1),
         "unknown_rate": unknown / max(total,1),

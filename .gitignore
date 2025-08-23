@@ -5,3 +5,7 @@ report/
 __pycache__/
 *.pyc
 .venv/
+configs/
+eval/reports
+eval/runs_grid
+eval/grid_search_pope.py
